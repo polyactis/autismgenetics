@@ -132,9 +132,11 @@ class Genotype(Entity, TableClass):
 	date_updated = Field(DateTime)
 	using_options(tablename='genotype', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
+	using_table_options(UniqueConstraint('individual_id', 'allele_id', 'genotype_method_id'))
 
 class GenotypeMethod(Entity, TableClass):
 	short_name = Field(String(256), unique=True)
+	filename = Field(String(10000))
 	description = Field(String(1024))
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
@@ -159,6 +161,7 @@ class Phenotype(Entity, TableClass):
 	individual = ManyToOne('Individual', colname='individual_id', ondelete='CASCADE', onupdate='CASCADE')
 	phenotype_method = ManyToOne('PhenotypeMethod', colname='phenotype_method_id', ondelete='CASCADE', onupdate='CASCADE')
 	value = Field(Float)
+	replicate = Field(Integer)
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
