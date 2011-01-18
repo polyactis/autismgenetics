@@ -2,14 +2,14 @@
 """
 Examples:
 	#setup database in postgresql
-	Stock_250kDB.py -v postgres -u crocea -z localhost -d graphdb -k public
+	AutismDB.py -v postgresql -u crocea -z localhost -d autismdb -k public
 	
 	#setup database in mysql
-	Stock_250kDB.py -u yh -z papaya.usc.edu
+	AutismDB.py -u yh -z papaya.usc.edu
 	
 Description:
-	2008-07-09
-	This is a wrapper for the stock_250k database, build on top of elixir. supposed to supercede the table definitions in mysql.sql.
+	2011-1-18
+	This is a wrapper for the autism db database, build on top of elixir.
 """
 import sys, os, math
 from sqlalchemy.types import LargeBinary
