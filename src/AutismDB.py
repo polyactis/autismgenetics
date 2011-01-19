@@ -25,7 +25,7 @@ else:   #32bit
 from sqlalchemy.engine.url import URL
 from elixir import Unicode, DateTime, String, Integer, UnicodeText, Text, Boolean, Float, Binary, Enum
 from elixir import Entity, Field, using_options, using_table_options
-from elixir import OneToMany, ManyToOne, ManyToMany
+from elixir import OneToMany, ManyToOne, ManyToManypath
 from elixir import setup_all, session, metadata, entities
 from elixir.options import using_table_options_handler	#using_table_options() can only work inside Entity-inherited class.
 from sqlalchemy import UniqueConstraint, create_engine
@@ -35,8 +35,8 @@ from sqlalchemy import and_, or_, not_
 
 from datetime import datetime
 
-from pymodule import SNPData
-from pymodule.db import ElixirDB, TableClass
+from db import ElixirDB, TableClass
+from ProcessOptions import ProcessOptions
 import os
 import hashlib
 
@@ -218,7 +218,6 @@ class AutismDB(ElixirDB):
 			__metadata__.bind = create_engine(self._url, pool_recycle=self.pool_recycle)
 		2008-07-09
 		"""
-		from pymodule import ProcessOptions
 		ProcessOptions.process_function_arguments(keywords, self.option_default_dict, error_doc=self.__doc__, \
 												class_to_have_attr=self)
 		
@@ -259,7 +258,6 @@ class AutismDB(ElixirDB):
 		# to ensure the metadata of other databases is setup properly.
 
 if __name__ == '__main__':
-	from pymodule import ProcessOptions
 	main_class = AutismDB
 	po = ProcessOptions(sys.argv, main_class.option_default_dict, error_doc=main_class.__doc__)
 	instance = main_class(**po.long_option2value)
