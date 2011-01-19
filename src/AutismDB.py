@@ -47,7 +47,6 @@ __session__ = scoped_session(sessionmaker(autoflush=False, autocommit=True))
 __metadata__ = MetaData()
 
 class README(Entity, TableClass):
-	#2008-08-07
 	title = Field(String(2000))
 	description = Field(String(60000))
 	created_by = Field(String(128))
@@ -57,10 +56,22 @@ class README(Entity, TableClass):
 	using_options(tablename='readme', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
 
+class Family(Entity, TableClass):
+	short_name = Field(String(256))
+	description = Field(String(10000))
+	created_by = Field(String(128))
+	updated_by = Field(String(128))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='family', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
+
 class Individual(Entity, TableClass):
+	family = ManyToOne('Family', colname='family_id', ondelete='CASCADE', onupdate='CASCADE')
+	code = Field(String(256))
 	firstname = Field(String(256))
 	lastname = Field(String(256))
-	sex = Field(Boolean)
+	sex = Field(String(256))
 	birthdate = Field(DateTime)
 	birthplace = Field(String(256))
 	created_by = Field(String(128))
@@ -69,6 +80,7 @@ class Individual(Entity, TableClass):
 	date_updated = Field(DateTime)
 	using_options(tablename='individual', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
+	using_table_options(UniqueConstraint('family_id', 'code'))
 
 class Ind2Ind(Entity, TableClass):
 	individual1 = ManyToOne('Individual', colname='individual1_id', ondelete='CASCADE', onupdate='CASCADE')
@@ -93,13 +105,15 @@ class RelationshipType(Entity, TableClass):
 
 class Locus(Entity, TableClass):
 	chromosome = Field(String(64))
-	position = Field(Integer)
+	start = Field(Integer)
+	stop = Field(Integer)
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
 	date_updated = Field(DateTime)
 	using_options(tablename='locus', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
+	using_table_options(UniqueConstraint('chromosome', 'start', 'stop'))
 
 class Allele(Entity, TableClass):
 	locus = ManyToOne('Locus', colname='locus_id', ondelete='CASCADE', onupdate='CASCADE')
@@ -111,6 +125,7 @@ class Allele(Entity, TableClass):
 	date_updated = Field(DateTime)
 	using_options(tablename='allele', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
+	using_table_options(UniqueConstraint('locus_id', 'allele_type_id'))
 
 class AlleleType(Entity, TableClass):
 	short_name = Field(String(256), unique=True)
@@ -156,6 +171,7 @@ class GenotypeFile(Entity, TableClass):
 	date_updated = Field(DateTime)
 	using_options(tablename='genotype_file', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
+	using_table_options(UniqueConstraint('individual_id', 'filename', 'genotype_method_id'))
 
 class Phenotype(Entity, TableClass):
 	individual = ManyToOne('Individual', colname='individual_id', ondelete='CASCADE', onupdate='CASCADE')
@@ -166,8 +182,9 @@ class Phenotype(Entity, TableClass):
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
 	date_updated = Field(DateTime)
-	using_options(tablename='phenotoype', metadata=__metadata__, session=__session__)
+	using_options(tablename='phenotype', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
+	using_table_options(UniqueConstraint('individual_id', 'replicate', 'phenotype_method_id'))
 
 class PhenotypeMethod(Entity, TableClass):
 	short_name = Field(String(256), unique=True)
