@@ -2,7 +2,7 @@
 """
 Examples:
 	#setup database in postgresql
-	AutismDB.py -v postgresql -u crocea -z localhost -d autismdb -k public
+	AutismDB.py -v postgresql -u yh -z localhost -d autismdb -k public
 	
 	#setup database in mysql
 	AutismDB.py -u yh -z papaya.usc.edu
@@ -25,7 +25,7 @@ else:   #32bit
 from sqlalchemy.engine.url import URL
 from elixir import Unicode, DateTime, String, Integer, UnicodeText, Text, Boolean, Float, Binary, Enum
 from elixir import Entity, Field, using_options, using_table_options
-from elixir import OneToMany, ManyToOne, ManyToManypath
+from elixir import OneToMany, ManyToOne, ManyToMany
 from elixir import setup_all, session, metadata, entities
 from elixir.options import using_table_options_handler	#using_table_options() can only work inside Entity-inherited class.
 from sqlalchemy import UniqueConstraint, create_engine
@@ -48,7 +48,7 @@ __metadata__ = MetaData()
 
 class README(Entity, TableClass):
 	title = Field(String(2000))
-	description = Field(String(60000))
+	description = Field(Text)
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
@@ -58,7 +58,7 @@ class README(Entity, TableClass):
 
 class Family(Entity, TableClass):
 	short_name = Field(String(256))
-	description = Field(String(10000))
+	description = Field(Text)
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
@@ -95,7 +95,7 @@ class Ind2Ind(Entity, TableClass):
 
 class RelationshipType(Entity, TableClass):
 	short_name = Field(String(256), unique=True)
-	description = Field(String(1024))
+	description = Field(Text)
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
@@ -104,9 +104,15 @@ class RelationshipType(Entity, TableClass):
 	using_table_options(mysql_engine='InnoDB')
 
 class Locus(Entity, TableClass):
+	"""
+	2011-2-3
+		add ref_allele, alt_allele
+	"""
 	chromosome = Field(String(64))
 	start = Field(Integer)
 	stop = Field(Integer)
+	ref_seq = ManyToOne('Sequence', colname='ref_seq_id', ondelete='CASCADE', onupdate='CASCADE')
+	alt_allele = ManyToOne('Sequence', colname='alt_seq_id', ondelete='CASCADE', onupdate='CASCADE')
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
@@ -115,21 +121,24 @@ class Locus(Entity, TableClass):
 	using_table_options(mysql_engine='InnoDB')
 	using_table_options(UniqueConstraint('chromosome', 'start', 'stop'))
 
+"""
 class Allele(Entity, TableClass):
-	locus = ManyToOne('Locus', colname='locus_id', ondelete='CASCADE', onupdate='CASCADE')
+	#locus = ManyToOne('Locus', colname='locus_id', ondelete='CASCADE', onupdate='CASCADE')
 	allele_type = ManyToOne('AlleleType', colname='allele_type_id', ondelete='CASCADE', onupdate='CASCADE')
 	sequence = Field(String(2048))
+	sequence_length = Field(Integer)
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
 	date_updated = Field(DateTime)
 	using_options(tablename='allele', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
-	using_table_options(UniqueConstraint('locus_id', 'allele_type_id'))
+	using_table_options(UniqueConstraint('allele_type_id'))
+"""
 
 class AlleleType(Entity, TableClass):
 	short_name = Field(String(256), unique=True)
-	description = Field(String(1024))
+	description = Field(Text)
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
@@ -137,22 +146,58 @@ class AlleleType(Entity, TableClass):
 	using_options(tablename='allele_type', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
 
+class Sequence(Entity, TableClass):
+	"""
+	2011-2-4
+		to store the base(s) of an allele
+	"""
+	sequence = Field(Text)
+	sequence_length = Field(Integer)
+	comment = Field(Text)
+	created_by = Field(String(128))
+	updated_by = Field(String(128))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='sequence', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
+	using_table_options(UniqueConstraint('sequence'))
+
 class Genotype(Entity, TableClass):
+	"""
+	2011-2-3
+		
+	"""
 	individual = ManyToOne('Individual', colname='individual_id', ondelete='CASCADE', onupdate='CASCADE')
-	allele = ManyToOne('Allele', colname='allele_id', ondelete='CASCADE', onupdate='CASCADE')
+	locus = ManyToOne('Locus', colname='locus_id', ondelete='CASCADE', onupdate='CASCADE')
+	allele_order = Field(Integer)
+	allele_type = ManyToOne('AlleleType', colname='allele_type_id', ondelete='CASCADE', onupdate='CASCADE')
+	allele_seq = ManyToOne('Sequence', colname='allele_seq_id', ondelete='CASCADE', onupdate='CASCADE')
+	allele_seq_length = Field(Integer)
+	score = Field(Float)
+	target_locus = ManyToOne('Locus', colname='target_locus_id', ondelete='CASCADE', onupdate='CASCADE')	#for translocated allele only
 	genotype_method = ManyToOne('GenotypeMethod', colname='genotype_method_id', ondelete='CASCADE', onupdate='CASCADE')
+	comment = Field(Text)
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
 	date_updated = Field(DateTime)
 	using_options(tablename='genotype', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
-	using_table_options(UniqueConstraint('individual_id', 'allele_id', 'genotype_method_id'))
+	using_table_options(UniqueConstraint('individual_id', 'locus_id', 'allele_order'))
 
 class GenotypeMethod(Entity, TableClass):
+	"""
+	2011-2-4
+		file format:
+						locus1	locus2
+			individual1	allele1/allele2
+			individual2
+	"""
 	short_name = Field(String(256), unique=True)
-	filename = Field(String(10000))
-	description = Field(String(1024))
+	bam_filename = Field(Text)
+	vcf_filename = Field(Text)
+	filename = Field(Text)
+	description = Field(Text)
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
@@ -161,8 +206,13 @@ class GenotypeMethod(Entity, TableClass):
 	using_table_options(mysql_engine='InnoDB')
 
 class GenotypeFile(Entity, TableClass):
+	"""
+	2011-2-4
+		file format:
+			locus.id	allele_order	allele_type	seq.id	score	target_locus
+	"""
 	individual = ManyToOne('Individual', colname='individual_id', ondelete='CASCADE', onupdate='CASCADE')
-	filename = Field(String(10000))
+	filename = Field(Text)
 	genotype_method = ManyToOne('GenotypeMethod', colname='genotype_method_id', ondelete='CASCADE', onupdate='CASCADE')
 	comment = Field(String(4096))
 	created_by = Field(String(128))
@@ -188,7 +238,7 @@ class Phenotype(Entity, TableClass):
 
 class PhenotypeMethod(Entity, TableClass):
 	short_name = Field(String(256), unique=True)
-	description = Field(String(1024))
+	description = Field(Text)
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
