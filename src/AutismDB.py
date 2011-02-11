@@ -194,6 +194,7 @@ class GenotypeMethod(Entity, TableClass):
 			individual2
 	"""
 	short_name = Field(String(256), unique=True)
+	genotype_file_dir = Field(Text)
 	bam_filename = Field(Text)
 	vcf_filename = Field(Text)
 	filename = Field(Text)
@@ -306,7 +307,83 @@ class AutismDB(ElixirDB):
 		setup_all(create_tables=create_tables)	#create_tables=True causes setup_all to call elixir.create_all(), which in turn calls metadata.create_all()
 		#2008-08-26 setup_all() would setup other databases as well if they also appear in the program. Seperate this to be envoked after initialization
 		# to ensure the metadata of other databases is setup properly.
-
+	
+	def findGenotypeMethodGivenName(self, genotypeMethodName):
+		"""
+		2011-2-11
+			create one if not-existent
+		"""
+		genotypeMethod = GenotypeMethod.query.filter_by(short_name=genotypeMethodName).first()
+		if not genotypeMethod:
+			genotypeMethod = GenotypeMethod(short_name=genotypeMethodName)
+			self.session.add(genotypeMethod)
+			self.session.flush()
+		return genotypeMethod
+	
+	def getUniqueSequence(self, sequence):
+		"""
+		2011-2-11
+		"""
+		db_entry = Sequence.query.filter_by(sequence=sequence).first()
+		if not db_entry:
+			db_entry = Sequence(sequence=sequence)
+			self.session.add(db_entry)
+			self.session.flush()
+		return db_entry
+	
+	def getAlleleType(self, allele_type_name):
+		"""
+		2011-2-11
+		"""
+		db_entry = AlleleType.query.filter_by(short_name=allele_type_name).first()
+		if not db_entry:
+			db_entry = AlleleType(short_name=allele_type_name)
+			self.session.add(db_entry)
+			self.session.flush()
+		return db_entry
+	
+	def getIndividual(self, code):
+		"""
+		2011-2-11
+		"""
+		db_entry = Individual.query.filter_by(code=code).first()
+		if not db_entry:
+			db_entry = Individual(code=code)
+			self.session.add(db_entry)
+			self.session.flush()
+		return db_entry
+	
+	def getGenotypeFile(self, individual, genotypeMethod):
+		"""
+		2011-2-11
+		"""
+		if individual.id and genotypeMethod.id:
+			db_entry = GenotypeFile.query.filter_by(individual_id=individual.id).filter_by(genotype_method_id=genotypeMethod.id).first()
+		else:
+			db_entry = None
+		if not db_entry:
+			db_entry = GenotypeFile()
+			db_entry.individual = individual
+			db_entry.genotype_method = genotypeMethod
+			db_entry.filename = os.path.join(genotypeMethod.genotype_file_dir, '%s_%s.tsv'%(genotypeMethod.id, individual.id))
+			self.session.add(db_entry)
+			self.session.flush()
+		return db_entry
+	
+	def getLocus(self, chr, start, stop=None, ref_seq=None, alt_seq=None):
+		"""
+		2011-2-11
+		
+		"""
+		db_entry = Locus.query.filter_by(chromosome=chr).filter_by(start=start).first()
+		if not db_entry:
+			db_entry = Locus(chromosome=chr, start=start, stop=stop)
+			db_entry.ref_seq = ref_seq
+			db_entry.alt_seq = alt_seq
+			self.session.add(db_entry)
+			self.session.flush()
+		return db_entry
+	
 if __name__ == '__main__':
 	main_class = AutismDB
 	po = ProcessOptions(sys.argv, main_class.option_default_dict, error_doc=main_class.__doc__)
