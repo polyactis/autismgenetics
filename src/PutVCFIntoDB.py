@@ -4,8 +4,17 @@
 Examples:
 	PutVCFIntoDB.py -i /...vcf -u yh -c
 	
+	~/script/autismgenetics/src/PutVCFIntoDB.py -i /home//alden/batch020411_new/tau_cons_recal.vcf
+		-u yh -c -b -n test_data_from_alden_tau_cons_recal
+	
 Description:
 	2011-2-4
+		This program imports genotype data in a VCF file into db. It adds individuals into db if they are not there,
+			adds a GenotypeMethod, GenotypeFile, Locus, AlleleType, Sequence.
+		Right now, it only deals with SNPs (reference, alternative, missing).
+		
+		It's best to have Individual and GenotypeMethod filled in beforehand because the file in GenotypeFile
+			uses their ID in its filename.
 """
 import sys, os, math
 #bit_number = math.log(sys.maxint)/math.log(2)
@@ -17,7 +26,7 @@ import time, csv, getopt
 import warnings, traceback, re
 
 import AutismDB
-from pymodule.util import runLocalCommand, getColName2IndexFromHeader
+from pymodule.utils import runLocalCommand, getColName2IndexFromHeader
 
 class PutVCFIntoDB(object):
 	__doc__ = __doc__
@@ -28,10 +37,10 @@ class PutVCFIntoDB(object):
 							('db_user', 1, ): [None, 'u', 1, 'database username', ],\
 							('db_passwd', 1, ): [None, 'p', 1, 'database password', ],\
 							("input_fname", 1, ): [None, 'i', 1, 'genotype file stored in VCF format'],\
-							("genotypeMethodName", 1, ): ['', 'n', 1, 'name designated in db for this batch of genotype data'],\
+							("genotype_method_name", 1, ): ['', 'n', 1, 'name designated in db for this batch of genotype data'],\
 							("run_type", 1, int): [1, 'y', 1, ''],\
 							('commit', 0, int):[0, 'c', 0, 'commit db transaction'],\
-							('debug', 0, int):[0, 'b', 0, 'toggle debug mode'],\
+							('debug', 0, int):[0, 'b', 0, 'toggle debug mode, transaction mode disabled.'],\
 							('report', 0, int):[0, 'r', 0, 'toggle report, more verbose stdout/stderr.']}
 	
 	def __init__(self,  **keywords):
@@ -41,23 +50,31 @@ class PutVCFIntoDB(object):
 		from pymodule import ProcessOptions
 		self.ad = ProcessOptions.process_function_arguments(keywords, self.option_default_dict, error_doc=self.__doc__, class_to_have_attr=self)
 	
-	def addIndividualAndGenotypeFile(self, db, genotypeMethod, header, col_name2index):
+	def addIndividualAndGenotypeFile(self, db, genotypeMethod, header, col_name2index, sampleStartingColumn=9,\
+						genotype_file_header = ['locus.id', 'allele_order', 'allele_type.id', 'seq.id', 'score', 'target_locus.id']):
 		"""
 		2011-2-11
+			This function adds individuals and affiliated genotype file entries into db.
+			It returns a dictionary mapping individual's column name to a genotype file handler.
 		"""
-		sys.stderr.write("Adding individuals and affiliated genotype files ...")
+		sys.stderr.write("Adding individuals and affiliated genotype files into db ...")
 		no_of_cols = len(header)
-		individual_name2fileHandler = {}
+		individual_name2fileHandler = {}	#individual's column name -> an opened file handler to store genetic data
 		counter = 0
-		for i in xrange(9, no_of_cols):
+		for i in xrange(sampleStartingColumn, no_of_cols):
 			individualName = header[i]
+			if not individualName:	#ignore empty column
+				continue
 			individualCode = individualName[:-4]	#get rid of .bam
 			individual = db.getIndividual(individualCode)
 			
 			genotypeFile = db.getGenotypeFile(individual, genotypeMethod)
-			fileHandler = csv.writer(open(genotypeFile.filename, 'w'), delimiter='\t')
-			header = ['locus.id', 'allele_order', 'allele_type.id', 'seq.id', 'score', 'target_locus.id']
-			fileHandler.writerow(header)
+			genotype_file_abs_path = os.path.join(db.data_dir, genotypeFile.filename)
+			if os.path.isfile(genotype_file_abs_path):
+				sys.stderr.write("Warning: %s already exists. Program exists.\n"%(genotype_file_abs_path))
+				sys.exit(3)
+			fileHandler = csv.writer(open(genotype_file_abs_path, 'w'), delimiter='\t')
+			fileHandler.writerow(genotype_file_header)
 			individual_name2fileHandler[individualName] = fileHandler
 			counter += 1
 		sys.stderr.write("%s individuals added. Done.\n"%(counter))
@@ -66,9 +83,10 @@ class PutVCFIntoDB(object):
 	def addOneFIle(self, db, input_fname, genotypeMethod):
 		"""
 		2011-2-4
+			one VCF file.
 		"""
+		sys.stderr.write("Adding genotype data from %s into db ...\n"%(input_fname))
 		import csv
-		session = db.session
 		reader = csv.reader(open(input_fname), delimiter='\t')
 		ref_allele_type = db.getAlleleType('reference')
 		alt_allele_type = db.getAlleleType('substitution')
@@ -76,18 +94,19 @@ class PutVCFIntoDB(object):
 		
 		individual_name2fileHandler = None
 		col_name2index = None
-		
+		counter = 0
 		for row in reader:
-			# to skip all prior comments
-			if row[0][:2] == '##':
+			if row[0][:2] == '##': 		# to skip all prior comments
 				pass
 			elif row[0] =='#CHROM':
 				row[0] = 'CHROM'	#discard the #
 				header = row
-				col_name2index = getColName2IndexFromHeader(header)
+				col_name2index = getColName2IndexFromHeader(header, skipEmptyColumn=True)
 				individual_name2fileHandler = self.addIndividualAndGenotypeFile(db, genotypeMethod, header, col_name2index)
 			else:
 				chr = row[col_name2index['CHROM']]
+				if chr[:3]=='chr':	#get rid of "chr"
+					chr = chr[3:]
 				start = int(row[col_name2index['POS']])
 				ref_seq = db.getUniqueSequence(row[col_name2index['REF']])
 				alt_seq = db.getUniqueSequence(row[col_name2index['ALT']])
@@ -103,25 +122,31 @@ class PutVCFIntoDB(object):
 					genotype_call = genotype_data_ls[format_column_name2index['GT']]
 					genotype_quality = genotype_data_ls[format_column_name2index['GQ']]
 					if genotype_call=='./.':
-						allele_type = missing_allele_type
 						score = ''
-						data_row_1 = [locus.id, 1, allele_type.id, '', score, '']
-						data_row_2 = [locus.id, 2, allele_type.id, '', score, '']
-					elif genotype_call =='1/0':
+						data_row_1 = [locus.id, 1, missing_allele_type.id, '', score, '']
+						data_row_2 = [locus.id, 2, missing_allele_type.id, '', score, '']
+					elif genotype_call =='1/0':		# treated same as 0/1
 						score = float(genotype_quality)
-						data_row_1 = [locus.id, 1, ref_allele_type.id, '', score, '']
-						data_row_2 = [locus.id, 2, ref_allele_type.id, '', score, '']
+						data_row_1 = [locus.id, 1, ref_allele_type.id, ref_seq.id, score, '']
+						data_row_2 = [locus.id, 2, alt_allele_type.id, alt_seq.id, score, '']
 					elif genotype_call =='1/1':
 						score = float(genotype_quality)
-						data_row_1 = [locus.id, 1, ref_allele_type.id, '', score, '']
-						data_row_2 = [locus.id, 2, alt_allele_type.id, '', score, '']
+						data_row_1 = [locus.id, 1, alt_allele_type.id, alt_seq.id, score, '']
+						data_row_2 = [locus.id, 2, alt_allele_type.id, alt_seq.id, score, '']
 					elif genotype_call =='0/1':
 						score = float(genotype_quality)
-						data_row_1 = [locus.id, 1, alt_allele_type.id, '', score, '']
-						data_row_2 = [locus.id, 2, alt_allele_type.id, '', score, '']
-					
+						data_row_1 = [locus.id, 1, ref_allele_type.id, ref_seq.id, score, '']
+						data_row_2 = [locus.id, 2, alt_allele_type.id, alt_seq.id, score, '']
+					elif genotype_call =='0/0':
+						score = float(genotype_quality)
+						data_row_1 = [locus.id, 1, ref_allele_type.id, ref_seq.id, score, '']
+						data_row_2 = [locus.id, 2, ref_allele_type.id, ref_seq.id, score, '']
 					fileHandler.writerow(data_row_1)
 					fileHandler.writerow(data_row_2)
+				counter += 1
+			if counter>0 and counter%5000==0:
+				sys.stderr.write("%s\t%s"%('\x08'*80, counter))
+		sys.stderr.write("\t %s total genotypes Done.\n"%counter)
 	
 	def run(self):
 		"""
@@ -135,27 +160,31 @@ class PutVCFIntoDB(object):
 						password=self.db_passwd, hostname=self.hostname, database=self.dbname, schema=self.schema)
 		db.setup(create_tables=False)
 		session = db.session
-		#session.begin()
+		if not self.debug:	#in debug mode, disable transaction to see db commit immediately.
+			session.begin()
 		
-		dataDirEntry = AutismDB.README.query.filter_by(title='data_dir').first()
-		if not dataDirEntry or not dataDirEntry.description or not os.path.isdir(dataDirEntry.description):
-			# todo: need to test dataDirEntry.description is writable to the user
-			sys.stderr.write("data_dir not available in db or not accessible on the harddisk. quit.\n")
-			sys.exit(2)
+		if not db.data_dir:
+			sys.stderr.write("Filesystem storage is not available. Exit.\n")
+			sys.exit(0)
 		
-		data_dir = dataDirEntry.description
-		genotype_dir = os.path.join(data_dir, 'genotype')
-		if not os.path.isdir(genotype_dir):
-			os.makedirs(genotype_dir)
+		genotype_dir = 'genotype'
+		genotype_data_abs_path =  os.path.join(db.data_dir, genotype_dir)
+		if not os.path.isdir(genotype_data_abs_path):
+			os.makedirs(genotype_data_abs_path)
 		
-		genotypeMethod = db.findGenotypeMethodGivenName(session, self.genotypeMethodName)
+		genotypeMethod = db.findGenotypeMethodGivenName(self.genotype_method_name)
 		genotypeMethod.vcf_filename = os.path.join(genotype_dir, 'genotypeMethod%s.vcf'%genotypeMethod.id)
-		
-		runLocalCommand('cp %s %s'%(self.input_fname, genotypeMethod.vcf_filename), report_stderr=True, report_stdout=True)
+		vcf_abs_path = os.path.join(db.data_dir, genotypeMethod.vcf_filename)
+		if os.path.isfile(vcf_abs_path):
+			sys.stderr.write("Warning: %s already exists. No overwriting it by copying input file."%(vcf_abs_path))
+			sys.exit(2)
+		else:
+			runLocalCommand('cp %s %s'%(self.input_fname, vcf_abs_path), report_stderr=True, report_stdout=True)
 		
 		genotypeMethod.genotype_file_dir = os.path.join(genotype_dir, 'genotypeMethod%s'%(genotypeMethod.id))
-		if not os.path.isdir(genotypeMethod.genotype_file_dir):
-			os.makedirs(genotypeMethod.genotype_file_dir)
+		genotype_file_dir_abs_path = os.path.join(db.data_dir, genotypeMethod.genotype_file_dir)
+		if not os.path.isdir(genotype_file_dir_abs_path):
+			os.makedirs(genotype_file_dir_abs_path)
 		
 		self.addOneFIle(db, self.input_fname, genotypeMethod)
 		
