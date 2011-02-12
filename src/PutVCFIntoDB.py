@@ -191,7 +191,6 @@ class PutVCFIntoDB(object):
 		
 		if self.commit:
 			session.commit()
-			session.clear()
 		else:	#default is rollback(). to demonstrate good programming
 			session.rollback()
 
