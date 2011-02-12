@@ -35,8 +35,8 @@ from sqlalchemy import and_, or_, not_
 
 from datetime import datetime
 
-from db import ElixirDB, TableClass
-from ProcessOptions import ProcessOptions
+from pymodule.db import ElixirDB, TableClass
+from pymodule import ProcessOptions
 import os
 import hashlib
 
@@ -112,7 +112,7 @@ class Locus(Entity, TableClass):
 	start = Field(Integer)
 	stop = Field(Integer)
 	ref_seq = ManyToOne('Sequence', colname='ref_seq_id', ondelete='CASCADE', onupdate='CASCADE')
-	alt_allele = ManyToOne('Sequence', colname='alt_seq_id', ondelete='CASCADE', onupdate='CASCADE')
+	alt_seq = ManyToOne('Sequence', colname='alt_seq_id', ondelete='CASCADE', onupdate='CASCADE')
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
@@ -326,7 +326,7 @@ class AutismDB(ElixirDB):
 		"""
 		db_entry = Sequence.query.filter_by(sequence=sequence).first()
 		if not db_entry:
-			db_entry = Sequence(sequence=sequence)
+			db_entry = Sequence(sequence=sequence, sequence_length=len(sequence))
 			self.session.add(db_entry)
 			self.session.flush()
 		return db_entry
@@ -370,12 +370,12 @@ class AutismDB(ElixirDB):
 			self.session.flush()
 		return db_entry
 	
-	def getLocus(self, chr, start, stop=None, ref_seq=None, alt_seq=None):
+	def getLocus(self, chr=None, start=None, stop=None, ref_seq=None, alt_seq=None):
 		"""
 		2011-2-11
 		
 		"""
-		db_entry = Locus.query.filter_by(chromosome=chr).filter_by(start=start).first()
+		db_entry = Locus.query.filter_by(chromosome=chr).filter_by(start=start).filter_by(stop=stop).first()
 		if not db_entry:
 			db_entry = Locus(chromosome=chr, start=start, stop=stop)
 			db_entry.ref_seq = ref_seq
@@ -383,6 +383,20 @@ class AutismDB(ElixirDB):
 			self.session.add(db_entry)
 			self.session.flush()
 		return db_entry
+	
+	@property
+	def data_dir(self, ):
+		"""
+		2011-2-11
+			get the master directory in which all files attached to this db are stored.
+		"""
+		dataDirEntry = README.query.filter_by(title='data_dir').first()
+		if not dataDirEntry or not dataDirEntry.description or not os.path.isdir(dataDirEntry.description):
+			# todo: need to test dataDirEntry.description is writable to the user
+			sys.stderr.write("data_dir not available in db or not accessible on the harddisk. quit.\n")
+			return None
+		else:
+			return dataDirEntry.description
 	
 if __name__ == '__main__':
 	main_class = AutismDB
