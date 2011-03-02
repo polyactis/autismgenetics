@@ -4,17 +4,17 @@
 Examples:
 	PutVCFIntoDB.py -i /...vcf -u yh -c
 	
-	~/script/autismgenetics/src/PutVCFIntoDB.py -i /home//alden/batch020411_new/tau_cons_recal.vcf
+	PutVCFIntoDB.py -i /home//alden/batch020411_new/tau_cons_recal.vcf
 		-u yh -c -b -n test_data_from_alden_tau_cons_recal
 	
 Description:
 	2011-2-4
-		This program imports genotype data in a VCF file into db. It adds individuals into db if they are not there,
-			adds a GenotypeMethod, GenotypeFile, Locus, AlleleType, Sequence.
+		This program imports genotype data in a VCF file (both plain and gzipped) into db.
+			It adds individuals (column name excluding ".bam" if present in vcf) into db if they are not there,
+				also inserts relevant data into GenotypeMethod, GenotypeFile, Locus, AlleleType, Sequence.
+			If 'GQ' is not available in vcf file, 'DP' is taken as score.
 		Right now, it only deals with SNPs (reference, alternative, missing).
 		
-		It's best to have Individual and GenotypeMethod filled in beforehand because the file in GenotypeFile
-			uses their ID in its filename.
 """
 import sys, os, math
 #bit_number = math.log(sys.maxint)/math.log(2)
@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.expanduser('~/lib/python'))
 sys.path.insert(0, os.path.join(os.path.expanduser('~/script')))
 
 import time, csv, getopt
-import warnings, traceback, re
+import warnings, traceback, re, gzip
 
 import AutismDB
 from pymodule.utils import runLocalCommand, getColName2IndexFromHeader
@@ -53,6 +53,8 @@ class PutVCFIntoDB(object):
 	def addIndividualAndGenotypeFile(self, db, genotypeMethod, header, col_name2index, sampleStartingColumn=9,\
 						genotype_file_header = ['locus.id', 'allele_order', 'allele_type.id', 'seq.id', 'score', 'target_locus.id']):
 		"""
+		2011-3-1
+			column name excluding the trailing ".bam" (if it's present) in vcf is taken as Individual.code.
 		2011-2-11
 			This function adds individuals and affiliated genotype file entries into db.
 			It returns a dictionary mapping individual's column name to a genotype file handler.
@@ -65,13 +67,16 @@ class PutVCFIntoDB(object):
 			individualName = header[i]
 			if not individualName:	#ignore empty column
 				continue
-			individualCode = individualName[:-4]	#get rid of .bam
+			if individualName[:-4]=='.bam':
+				individualCode = individualName[:-4]	#get rid of .bam
+			else:
+				individualCode = individualName
 			individual = db.getIndividual(individualCode)
 			
 			genotypeFile = db.getGenotypeFile(individual, genotypeMethod)
 			genotype_file_abs_path = os.path.join(db.data_dir, genotypeFile.filename)
 			if os.path.isfile(genotype_file_abs_path):
-				sys.stderr.write("Warning: %s already exists. Program exists.\n"%(genotype_file_abs_path))
+				sys.stderr.write("Warning: %s already exists. Program exits.\n"%(genotype_file_abs_path))
 				sys.exit(3)
 			fileHandler = csv.writer(open(genotype_file_abs_path, 'w'), delimiter='\t')
 			fileHandler.writerow(genotype_file_header)
@@ -82,12 +87,19 @@ class PutVCFIntoDB(object):
 	
 	def addOneFIle(self, db, input_fname, genotypeMethod):
 		"""
+		2011-2-25
+			can deal with gzipped vcf file now.
+			if 'GQ' is not available, 'DP' is taken as score.
 		2011-2-4
 			one VCF file.
 		"""
 		sys.stderr.write("Adding genotype data from %s into db ...\n"%(input_fname))
 		import csv
-		reader = csv.reader(open(input_fname), delimiter='\t')
+		if input_fname[-2:]=='gz':
+			inf = gzip.open(input_fname, 'rb')
+		else:
+			inf = open(input_fname)
+		reader = csv.reader(inf, delimiter='\t')
 		ref_allele_type = db.getAlleleType('reference')
 		alt_allele_type = db.getAlleleType('substitution')
 		missing_allele_type = db.getAlleleType('missing')
@@ -120,7 +132,10 @@ class PutVCFIntoDB(object):
 					genotype_data = row[individual_col_index]
 					genotype_data_ls = genotype_data.split(':')
 					genotype_call = genotype_data_ls[format_column_name2index['GT']]
-					genotype_quality = genotype_data_ls[format_column_name2index['GQ']]
+					genotype_quality_index = format_column_name2index.get('GQ')
+					if genotype_quality_index is None:
+						genotype_quality_index = format_column_name2index.get('DP')
+					genotype_quality = genotype_data_ls[genotype_quality_index]
 					if genotype_call=='./.':
 						score = ''
 						data_row_1 = [locus.id, 1, missing_allele_type.id, '', score, '']
@@ -173,7 +188,12 @@ class PutVCFIntoDB(object):
 			os.makedirs(genotype_data_abs_path)
 		
 		genotypeMethod = db.findGenotypeMethodGivenName(self.genotype_method_name)
-		genotypeMethod.vcf_filename = os.path.join(genotype_dir, 'genotypeMethod%s.vcf'%genotypeMethod.id)
+		if self.input_fname[-2:]=='gz':
+			db_vcf_filename_suffix = 'vcf.gz'
+		else:
+			db_vcf_filename_suffix = 'vcf'
+		genotypeMethod.vcf_filename = os.path.join(genotype_dir, 'genotypeMethod%s.%s'%\
+												(genotypeMethod.id, db_vcf_filename_suffix))
 		vcf_abs_path = os.path.join(db.data_dir, genotypeMethod.vcf_filename)
 		if os.path.isfile(vcf_abs_path):
 			sys.stderr.write("Warning: %s already exists. No overwriting it by copying input file."%(vcf_abs_path))
