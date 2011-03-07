@@ -66,7 +66,139 @@ class Family(Entity, TableClass):
 	using_options(tablename='family', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
 
+class Country(Entity):
+	"""
+	2011-3-1
+	"""
+	name = Field(String(100))
+	abbr = Field(String(10))
+	capital = Field(Text)
+	latitude = Field(Float)
+	longitude = Field(Float)
+	created_by = Field(String(128))
+	updated_by = Field(String(128))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='country', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
+
+class Site(Entity, TableClass):
+	"""
+	2011-3-1
+	"""
+	short_name = Field(String(256))
+	description = Field(Text)
+	latitude = Field(Float)
+	longitude = Field(Float)
+	city = Field(String(100))
+	stateprovince = Field(String(100))
+	region = Field(String(100))
+	zippostal = Field(String(20))
+	country = ManyToOne("Country", colname='country_id', ondelete='CASCADE', onupdate='CASCADE')
+	created_by = Field(String(128))
+	updated_by = Field(String(128))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='site', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
+
+class Group(Entity):
+	"""
+	2011-3-1
+	"""
+	id = Field(Integer,primary_key=True)
+	name = Field(Unicode(512),required=True)
+	user_ls = ManyToMany('User',tablename='user2group', local_colname='group_id')
+	phenotype_method_ls = ManyToMany("PhenotypeMethod", tablename='group2phenotype_method', local_colname='group_id')
+	individual_ls = ManyToMany("Individual",tablename='individual2group', local_colname='group_id')
+	using_table_options(mysql_engine='InnoDB', useexisting=True)
+	using_options(tablename='acl_group',metadata=__metadata__, session=__session__)
+	#group is preserved keyword in postgresql (mysql likely)
+	def __repr__(self):
+		return (u'<Group: name=%s>' % self.name).encode('utf-8')
+
+class User(Entity):
+	"""
+	2011-3-1
+	"""
+	title = Field(String(4))
+	realname = Field(Unicode(512))
+	email = Field(String(100))
+	username = Field(String(10))
+	_password = Field(String(40), required = True, colname='password', synonym='password')
+	organisation = Field(Unicode(100))
+	#isAdmin = Field(postgresql.Enum(('Y','N'), name=is_admin_enum_type), default='N', required=True,)
+	isAdmin = Field(Enum("Y","N", name="is_admin_enum_type"), default='N', required=True,)
+	group_ls = ManyToMany('Group', tablename='user2group', local_colname='user_id')
+	phenotype_method_ls = ManyToMany("PhenotypeMethod",tablename='user2phenotype_method', local_colname='user_id')
+	individual_ls = ManyToMany("Individual",tablename='individual2user', local_colname='user_id')
+	created_by = Field(String(128))
+	updated_by = Field(String(128))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='acl_user', metadata=__metadata__, session=__session__)
+	#user is preserved keyword in postgresql (mysql likely)
+	using_table_options(mysql_engine='InnoDB')
+	
+	def validate_password(self, password):
+		"""
+        Check the password against existing credentials.
+        
+        :param password: the password that was provided by the user to
+            try and authenticate. This is the clear text version that we will
+            need to match against the hashed one in the database.
+        :type password: unicode object.
+        :return: Whether the password is valid.
+        :rtype: bool
+        
+        """
+		hashed_pass = hashlib.sha1()
+		hashed_pass.update(self._password[:8] + password)
+		return self._password[8:] == hashed_pass.hexdigest()
+
+	def _set_password(self, password):
+		"""encrypts password on the fly using the encryption
+        algo defined in the configuration
+        """
+		self._password = self.__encrypt_password(password)
+
+	def _get_password(self):
+		"""returns password
+        """
+		return self._password
+
+	password = property(_get_password,_set_password)
+
+	@classmethod
+	def __encrypt_password(cls,  password):
+		"""Hash the given password with the specified algorithm. Valid values
+        for algorithm are 'md5' and 'sha1'. All other algorithm values will
+        be essentially a no-op."""
+		hashed_password = password
+		
+		if isinstance(password, unicode):
+			password_8bit = password.encode('UTF-8')
+		else:
+			password_8bit = password
+		
+		salt = hashlib.sha1()
+		salt.update(os.urandom(60))
+		salt_text = salt.hexdigest()
+		hash = hashlib.sha1()
+		hash.update(salt_text[:8] + password_8bit)
+		hashed_password = salt_text[:8] + hash.hexdigest()
+		print '*'*20,  salt_text[:8], " ", hashed_password[:8]
+		
+		if not isinstance(hashed_password, unicode):
+			hashed_password = hashed_password.decode('UTF-8')
+
+		return hashed_password
+
 class Individual(Entity, TableClass):
+	"""
+	2011-3-1
+		add tax_id, collector, site, group_ls, user_ls, latitude, longitude
+	"""
 	family = ManyToOne('Family', colname='family_id', ondelete='CASCADE', onupdate='CASCADE')
 	code = Field(String(256))
 	firstname = Field(String(256))
@@ -74,13 +206,57 @@ class Individual(Entity, TableClass):
 	sex = Field(String(256))
 	birthdate = Field(DateTime)
 	birthplace = Field(String(256))
+	access = Field(Enum("public", "restricted", name="access_enum_type"), default='restricted')
+	tax_id =Field(Integer)	#2011-3-1
+	latitude = Field(Float)	#2011-3-1
+	longitude = Field(Float)	#2011-3-1
+	collector = ManyToOne("User", colname='collector_id', ondelete='CASCADE', onupdate='CASCADE')	#2011-3-1
+	site = ManyToOne("Site", colname='site_id', ondelete='CASCADE', onupdate='CASCADE')	#2011-3-1
+	group_ls = ManyToMany('Group',tablename='individual2group', local_colname='individual_id', remote_colname='group_id')	#2011-3-1
+	user_ls = ManyToMany('User',tablename='individual2user', local_colname='individual_id', remote_colname='user_id')	#2011-3-1
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
 	date_updated = Field(DateTime)
 	using_options(tablename='individual', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
-	using_table_options(UniqueConstraint('family_id', 'code'))
+	using_table_options(UniqueConstraint('family_id', 'code', 'tax_id'))
+	
+	@classmethod
+	def getIndividualsForACL(cls, user = None):
+		"""
+		2011-3-1
+			get all individuals that could be accessed by this user
+		"""
+		TableClass = Individual
+		query = TableClass.query
+		clause = and_(TableClass.access == 'public')
+		if user is not None:
+			if user.isAdmin == 'Y':
+				return query
+			clause = or_(clause,TableClass.collector == user, TableClass.user_ls.any(User.id == user.id),
+						TableClass.group_ls.any(Group.id.in_([group.id for group in user.group_ls])))
+		query = query.filter(clause)
+		return query
+	
+	def checkACL(self,user):
+		"""
+		2011-3-1
+			check if the user could access this individual
+		"""
+		if self.access == 'public':
+			return True
+		if user is None:
+			return False
+		if user.isAdmin == 'Y':
+			return True
+		if self.collector == user: 
+			return True
+		if user in self.user_ls:
+			return True
+		if [group in self.group_ls for group in user.group_ls]: 
+			return True
+		return False
 
 class Ind2Ind(Entity, TableClass):
 	individual1 = ManyToOne('Individual', colname='individual1_id', ondelete='CASCADE', onupdate='CASCADE')
@@ -103,23 +279,94 @@ class RelationshipType(Entity, TableClass):
 	using_options(tablename='relationship_type', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
 
+class AlignmentMethod(Entity, TableClass):
+	"""
+	2011-3-3
+	"""
+	short_name = Field(String(256), unique=True)
+	description = Field(Text)
+	individual_alignment_ls = OneToMany("IndividualAlignment")
+	created_by = Field(String(128))
+	updated_by = Field(String(128))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='alignment_method', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
+
+class IndividualAlignment(Entity, TableClass):
+	"""
+	2011-3-3
+	"""
+	ind_sequence = ManyToOne('IndividualSequence', colname='ind_seq_id', ondelete='CASCADE', onupdate='CASCADE')
+	ref_sequence = ManyToOne('IndividualSequence', colname='ref_ind_seq_id', ondelete='CASCADE', onupdate='CASCADE')
+	aln_method = ManyToOne('AlignmentMethod', colname='aln_method_id', ondelete='CASCADE', onupdate='CASCADE')
+	genotype_method_ls = ManyToMany("GenotypeMethod",tablename='genotype_method2individual_alignment', local_colname='individual_alignment_id')
+	path = Field(Text)
+	format = Field(String(512))
+	created_by = Field(String(128))
+	updated_by = Field(String(128))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='individual_alignment', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
+	using_table_options(UniqueConstraint('ind_seq_id', 'ref_ind_seq_id', 'aln_method_id'))
+
+class IndividualSequence(Entity, TableClass):
+	"""
+	2011-3-3
+	"""
+	individual = ManyToOne('Individual', colname='individual_id', ondelete='CASCADE', onupdate='CASCADE')
+	sequencer = Field(String(512))
+	sequence_type = Field(String(512))	#assembled genome, contig, reads or ...
+	path = Field(Text)	#storage folder path
+	format = Field(String(512))
+	created_by = Field(String(128))
+	updated_by = Field(String(128))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='individual_sequence', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
+	using_table_options(UniqueConstraint('individual_id', 'sequencer', 'sequence_type'))
+
+class IndividualSequence2Sequence(Entity, TableClass):
+	"""
+	2011-3-3
+	"""
+	individual1_sequence = ManyToOne('IndividualSequence', colname='individual1_sequence_id', ondelete='CASCADE', onupdate='CASCADE')
+	individual1_chr = Field(String(512))
+	individual1_start = Field(Integer)
+	individual1_stop = Field(Integer)
+	individual2_sequence = ManyToOne('IndividualSequence', colname='individual2_sequence_id', ondelete='CASCADE', onupdate='CASCADE')
+	individual2_chr = Field(String(512))
+	individual2_start = Field(Integer)
+	individual2_stop = Field(Integer)
+	created_by = Field(String(128))
+	updated_by = Field(String(128))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='individual_seq2seq_map', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
+	using_table_options(UniqueConstraint('individual1_sequence_id', 'individual1_chr', 'individual1_start', 'individual1_stop',\
+										'individual2_sequence_id', 'individual2_chr', 'individual2_start', 'individual2_stop'))
+
 class Locus(Entity, TableClass):
 	"""
 	2011-2-3
 		add ref_allele, alt_allele
 	"""
-	chromosome = Field(String(64))
+	chromosome = Field(String(512))
 	start = Field(Integer)
 	stop = Field(Integer)
 	ref_seq = ManyToOne('Sequence', colname='ref_seq_id', ondelete='CASCADE', onupdate='CASCADE')
 	alt_seq = ManyToOne('Sequence', colname='alt_seq_id', ondelete='CASCADE', onupdate='CASCADE')
+	ref_sequence = ManyToOne('IndividualSequence', colname='ref_ind_seq_id', ondelete='CASCADE', onupdate='CASCADE')
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
 	date_updated = Field(DateTime)
 	using_options(tablename='locus', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
-	using_table_options(UniqueConstraint('chromosome', 'start', 'stop'))
+	using_table_options(UniqueConstraint('chromosome', 'start', 'stop', 'ref_ind_seq_id'))
 
 """
 class Allele(Entity, TableClass):
@@ -199,12 +446,16 @@ class GenotypeMethod(Entity, TableClass):
 	vcf_filename = Field(Text)
 	filename = Field(Text)
 	description = Field(Text)
+	individual_alignment_ls = ManyToMany("IndividualAlignment",tablename='genotype_method2individual_alignment', \
+										local_colname='genotype_method_id')
+	ref_sequence = ManyToOne('IndividualSequence', colname='ref_ind_seq_id', ondelete='CASCADE', onupdate='CASCADE')
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
 	date_updated = Field(DateTime)
 	using_options(tablename='genotype_method', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
+	using_table_options(UniqueConstraint('short_name', 'ref_ind_seq_id'))
 
 class GenotypeFile(Entity, TableClass):
 	"""
@@ -238,14 +489,55 @@ class Phenotype(Entity, TableClass):
 	using_table_options(UniqueConstraint('individual_id', 'replicate', 'phenotype_method_id'))
 
 class PhenotypeMethod(Entity, TableClass):
+	"""
+	2011-3-1
+		add user_ls/group_ls information
+	"""
 	short_name = Field(String(256), unique=True)
 	description = Field(Text)
+	collector = ManyToOne("User",colname='collector_id')
+	access = Field(Enum("public", "restricted", name="access_enum_type"), default='restricted')
+	group_ls = ManyToMany('Group',tablename='group2phenotype_method', local_colname='phenotype_method_id', remote_colname='group_id')
+	user_ls = ManyToMany('User',tablename='user2phenotype_method', local_colname='phenotype_method_id', remote_colname='user_id')
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
 	date_updated = Field(DateTime)
 	using_options(tablename='phenotype_method', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
+	
+	@classmethod
+	def getPhenotypesForACL(cls, biology_category_id = None,user = None):
+		#
+		TableClass = PhenotypeMethod
+		query = TableClass.query
+		"""
+		if biology_category_id is not None:
+			query = query.filter(TableClass.biology_category_id==biology_category_id)
+		"""
+		clause = and_(TableClass.access == 'public')
+		if user is not None:
+			if user.isAdmin == 'Y':
+				return query
+			clause = or_(clause, TableClass.collector == user, TableClass.user_ls.any(User.id == user.id),
+						TableClass.group_ls.any(Group.id.in_([group.id for group in user.group_ls])))
+		query = query.filter(clause)
+		return query
+	
+	def checkACL(self,user):
+		if self.access == 'public':
+			return True
+		if user is None:
+			return False
+		if user.isAdmin == 'Y':
+			return True
+		if self.collector == user: 
+			return True
+		if user in self.user_ls:
+			return True
+		if [group in self.group_ls for group in user.group_ls]: 
+			return True
+		return False
 
 class AutismDB(ElixirDB):
 	__doc__ = __doc__
