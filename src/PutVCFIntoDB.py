@@ -53,6 +53,8 @@ class PutVCFIntoDB(object):
 	def addIndividualAndGenotypeFile(self, db, genotypeMethod, header, col_name2index, sampleStartingColumn=9,\
 						genotype_file_header = ['locus.id', 'allele_order', 'allele_type.id', 'seq.id', 'score', 'target_locus.id']):
 		"""
+		2011-3-4
+			adjust the col_name2index because sometimes individual names are not same as the column names if they contain a trailing .bam
 		2011-3-1
 			column name excluding the trailing ".bam" (if it's present) in vcf is taken as Individual.code.
 		2011-2-11
@@ -65,12 +67,14 @@ class PutVCFIntoDB(object):
 		counter = 0
 		for i in xrange(sampleStartingColumn, no_of_cols):
 			individualName = header[i]
+			col_index = col_name2index.get(individualName)	#2011-3-4
 			if not individualName:	#ignore empty column
 				continue
 			if individualName[:-4]=='.bam':
 				individualCode = individualName[:-4]	#get rid of .bam
 			else:
 				individualCode = individualName
+			col_name2index[individualCode] = col_index	#2011-3-4
 			individual = db.getIndividual(individualCode)
 			
 			genotypeFile = db.getGenotypeFile(individual, genotypeMethod)
