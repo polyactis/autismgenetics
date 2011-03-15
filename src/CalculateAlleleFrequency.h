@@ -32,9 +32,16 @@
 #include <boost/random/uniform_real.hpp>
 #include <boost/random/variate_generator.hpp>
 
+#include "boost/date_time/posix_time/posix_time.hpp"	//microsec_clock, time_duration, ptime
 
+
+#include <boost/iostreams/concepts.hpp>   // multichar_input_filter
+#include <boost/iostreams/operations.hpp> // read
 
 using namespace std;
+using namespace boost::posix_time;
+namespace pt = boost::posix_time;
+namespace io = boost::iostreams;
 
 typedef vector<int> vi;
 //typedef boost::tuple<std::string, std::string, float> edge_string_cor;
@@ -52,7 +59,7 @@ public:
 	CalculateAlleleFrequency(float frequencyToSimulate, int noOfRows, int noOfCols, float minMAF);
 	~CalculateAlleleFrequency();
 	vector<vi> simulateDataMatrix(float frequencyToSimulate, int noOfRows, int noOfCols);
-	vector<float> calculateMAF(vector<vi> &dataMatrix);
+	vector<float> calculateMAF(vector<vi> &dataMatrix, float &minMAF);
 	void run();
 
 };

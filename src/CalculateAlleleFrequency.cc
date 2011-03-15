@@ -24,7 +24,12 @@ CalculateAlleleFrequency::~CalculateAlleleFrequency()
 }
 
 vector<vi> CalculateAlleleFrequency::simulateDataMatrix(float frequencyToSimulate, int noOfRows, int noOfCols)
+/*
+ * 2011-3-14 calculate how long it takes
+ *
+ */
 {
+	boost::posix_time::ptime beginTime = boost::posix_time::microsec_clock::local_time();
 	std::cerr<<"Simulating "<< noOfRows << "X" << noOfCols << " matrix with maf=" <<frequencyToSimulate << "...";
 	int intFrequency = frequencyToSimulate*100;
 	int randomInt;
@@ -45,7 +50,7 @@ vector<vi> CalculateAlleleFrequency::simulateDataMatrix(float frequencyToSimulat
 
 	#pragma omp parallel for private(j,i,allele,randomInt) \
 		shared(dataMatrix,intFrequency, noOfCols, noOfRows) \
-		schedule(dynamic,10)
+		schedule(dynamic,2)
 	for (j=0;j<noOfCols;j++)
 	{
 		for(i=0;i<noOfRows;i++)
@@ -62,28 +67,38 @@ vector<vi> CalculateAlleleFrequency::simulateDataMatrix(float frequencyToSimulat
 			dataMatrix[i][j] = allele;
 		}
 	}
-	std::cerr<<"Done"<<std::endl;
+	ptime endTime = microsec_clock::local_time();
+	time_duration td = endTime-beginTime;
+	std::cerr<< " " << td.total_milliseconds()/1000.0 << " seconds. Done"<<std::endl;
 	return dataMatrix;
 }
 
-vector<float> CalculateAlleleFrequency::calculateMAF(vector<vi> &dataMatrix)
+vector<float> CalculateAlleleFrequency::calculateMAF(vector<vi> &dataMatrix, float &minMAF)
+/*
+ * 2011-3-14 calculate how long it takes
+ *
+ */
 {
+	ptime beginTime = microsec_clock::local_time();
 	std::cerr<<"Calculating MAF for the matrix ... ";
 	vector <float> mafVector(_noOfCols);
 	int i,j;
 	int noOfLociAboveMinMAF=0;
 	std::map<int, float>::iterator a2fIter;
 	int allele;
-	#pragma omp parallel for private(j,i, allele, a2fIter) shared(mafVector) reduction(+: noOfLociAboveMinMAF)
+	#pragma omp parallel for private(j,i, allele, a2fIter) shared(mafVector) reduction(+: noOfLociAboveMinMAF)\
+		schedule(dynamic,2)	//2 is better than 10, or 10000. The larger, the slower the program will be.
 	for (j=0;j<_noOfCols;j++)
 	{
 		std::map<int, float > allele2frequency;
 		//tie(a2fIter, inserted) = allele2frequency.insert(std::make_pair(dataMatrix[i][j], ));
-		//allele2frequency[0] = 0.0;
-		//allele2frequency[1] = 1.0;
+		allele2frequency[0] = 0.0;
+		allele2frequency[1] = 1.0;
 		for(i=0;i<_noOfRows;i++)
 		{
 			allele = dataMatrix[i][j];
+			allele2frequency[allele] += 1;
+			/*
 			a2fIter = allele2frequency.find(allele);
 			if (a2fIter==allele2frequency.end())
 			{
@@ -93,36 +108,73 @@ vector<float> CalculateAlleleFrequency::calculateMAF(vector<vi> &dataMatrix)
 			{
 				allele2frequency[allele] += 1;
 			}
+			 */
 		}
+		/*
 		float maf=1.0;	// max that maf could be.
 		for(a2fIter=allele2frequency.begin();a2fIter!=allele2frequency.end();a2fIter++)
 		{
 			(*a2fIter).second /= float(_noOfRows);
 			if ((*a2fIter).second<maf)
 				maf =  a2fIter->second;
-		}
-		//allele2frequency[0] = allele2frequency[0]/float(_noOfRows);
-		//allele2frequency[1] = allele2frequency[1]/float(_noOfRows);
-		//float maf = std::min(allele2frequency[0], allele2frequency[1]);
+		}*/
+		allele2frequency[0] = allele2frequency[0]/float(_noOfRows);
+		allele2frequency[1] = allele2frequency[1]/float(_noOfRows);
+		float maf = std::min(allele2frequency[0], allele2frequency[1]);
 		mafVector[j] = maf;
 		//#pragma omp critical
 		//{
-		if (maf>=_minMAF)
+		if (maf>=minMAF)
 		{
 			noOfLociAboveMinMAF += 1;
 		}
 		//}
 	}
+	// 2011-3-14 calculate how long it takes
+	ptime endTime = microsec_clock::local_time();
+	time_duration td = endTime-beginTime;
 
-	std::cerr<< noOfLociAboveMinMAF << " loci with MAF>= " << _minMAF<< ". Done"<<std::endl;
+	std::cerr<< noOfLociAboveMinMAF << " loci with MAF>= " << minMAF<< ", " << td.total_milliseconds()/1000.0 << " seconds. Done"<<std::endl;
 
 	return mafVector;
 }
 
 void CalculateAlleleFrequency::run()
+/*
+ * 2011-3-14 add code to get user input and repeatedly test the MAF calculation step
+ *
+ */
 {
 	_dataMatrix = simulateDataMatrix(_frequencyToSimulate, _noOfRows, _noOfCols);
-	_mafVector = calculateMAF(_dataMatrix);
+	_mafVector = calculateMAF(_dataMatrix, _minMAF);
+
+	// 2011-3-14 add code to get user input and repeatedly test the MAF calculation step
+	float minMAF;
+	//char *minMAF_in_str;
+	string minMAF_in_str;
+	//char minMAF_in_str[256];
+	std::cerr<<"Enter min MAF: ";
+	std::cin >> minMAF_in_str;
+	//cin.getline(minMAF_in_str,256);
+	//std::cin.read(minMAF_in_str, 256);	//with correct type as "char *minMAF_in_str", this cin.read() doesn't work.
+	//io::read(std::cin, minMAF_in_str, n);
+	//std::cerr<<minMAF_in_str << std::endl;
+
+	while (minMAF_in_str!="q")
+	{
+		//if (result==-1)
+		//	break;
+		float minMAF = atof(minMAF_in_str.c_str());
+		_mafVector = calculateMAF(_dataMatrix, minMAF);
+		#pragma omp single	// not necessary
+		{
+		std::cerr<<"Enter min MAF: ";
+		std::cin >> minMAF_in_str;
+		//cin.getline(minMAF_in_str,256);
+		//result = io::read(std::cin, minMAF_in_str, n);
+		}
+	}
+
 }
 
 void print_usage(FILE* stream,int exit_code)
@@ -169,7 +221,7 @@ int main(int argc, char* argv[])
 		{
 		case 'h':
 			print_usage(stdout,0);
-	  		exit(1);
+			exit(1);
 		case 'o':
 			output_filename=optarg;
 			break;
