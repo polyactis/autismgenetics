@@ -201,8 +201,7 @@ class Individual(Entity, TableClass):
 	"""
 	family = ManyToOne('Family', colname='family_id', ondelete='CASCADE', onupdate='CASCADE')
 	code = Field(String(256))
-	firstname = Field(String(256))
-	lastname = Field(String(256))
+	name = Field(String(256))
 	sex = Field(String(256))
 	birthdate = Field(DateTime)
 	birthplace = Field(String(256))
