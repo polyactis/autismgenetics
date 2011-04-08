@@ -2,16 +2,18 @@
 """
 Examples:
 	#setup database in postgresql
-	AutismDB.py -v postgresql -u yh -z localhost -d autismdb -k public
+	%s -v postgresql -u yh -z localhost -d autismdb -k public
 	
 	#setup database in mysql
-	AutismDB.py -u yh -z papaya.usc.edu
+	%s -u yh -z papaya.usc.edu
 	
 Description:
 	2011-1-18
 	This is a wrapper for the autism db database, build on top of elixir.
 """
 import sys, os, math
+__doc__ = __doc__%(sys.argv[0], sys.argv[0])
+
 from sqlalchemy.types import LargeBinary
 
 bit_number = math.log(sys.maxint)/math.log(2)
@@ -45,6 +47,22 @@ __session__ = scoped_session(sessionmaker(autoflush=False, autocommit=True))
 #__metadata__ = ThreadLocalMetaData()	#2008-10 not good for pylon
 
 __metadata__ = MetaData()
+
+class AnalysisMethod(Entity):
+	"""
+	2011-4-5
+		record the analysis method used in like ScoreMethod or others.
+	"""
+	short_name = Field(String(120))
+	method_description = Field(String(8000))
+	smaller_score_more_significant = Field(Integer)
+	created_by = Field(String(200))
+	updated_by = Field(String(200))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='analysis_method', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
+	
 
 class README(Entity, TableClass):
 	title = Field(String(2000))
@@ -196,6 +214,8 @@ class User(Entity):
 
 class Individual(Entity, TableClass):
 	"""
+	2011-4-8
+		change (firstname, lastname) to one field, name.
 	2011-3-1
 		add tax_id, collector, site, group_ls, user_ls, latitude, longitude
 	"""
@@ -350,6 +370,8 @@ class IndividualSequence2Sequence(Entity, TableClass):
 
 class Locus(Entity, TableClass):
 	"""
+	2011-4-5
+		add table locus_method
 	2011-2-3
 		add ref_allele, alt_allele
 	"""
@@ -359,6 +381,9 @@ class Locus(Entity, TableClass):
 	ref_seq = ManyToOne('Sequence', colname='ref_seq_id', ondelete='CASCADE', onupdate='CASCADE')
 	alt_seq = ManyToOne('Sequence', colname='alt_seq_id', ondelete='CASCADE', onupdate='CASCADE')
 	ref_sequence = ManyToOne('IndividualSequence', colname='ref_ind_seq_id', ondelete='CASCADE', onupdate='CASCADE')
+	#locus_method = ManyToOne('LocusMethod', colname='locus_method_id', ondelete='CASCADE', onupdate='CASCADE')
+	locus_method_ls = ManyToMany('LocusMethod',tablename='locus2locus_method', local_colname='locus_id', \
+								remote_colname='locus_method_id')
 	created_by = Field(String(128))
 	updated_by = Field(String(128))
 	date_created = Field(DateTime, default=datetime.now)
@@ -366,6 +391,89 @@ class Locus(Entity, TableClass):
 	using_options(tablename='locus', metadata=__metadata__, session=__session__)
 	using_table_options(mysql_engine='InnoDB')
 	using_table_options(UniqueConstraint('chromosome', 'start', 'stop', 'ref_ind_seq_id'))
+
+class LocusScore(Entity, TableClass):
+	"""
+	2011-4-5
+		score of locus
+	"""
+	locus = ManyToOne('Locus', colname='locus_id', ondelete='CASCADE', onupdate='CASCADE')
+	score_method = ManyToOne('ScoreMethod', colname='score_method_id', ondelete='CASCADE', onupdate='CASCADE')
+	score = Field(Float)
+	rank = Field(Integer)
+	object = Field(LargeBinary(134217728), deferred=True)	#a python dictionary to store other attributes
+	created_by = Field(String(128))
+	updated_by = Field(String(128))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='locus_score', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
+	using_table_options(UniqueConstraint('locus_id', 'score_method_id'))
+
+
+class ScoreMethod(Entity, TableClass):
+	"""
+	2011-4-5
+	"""
+	short_name = Field(String(256), unique=True)
+	filename = Field(String(1000), unique=True)
+	original_filename = Field(Text)
+	description = Field(Text)
+	min_maf = Field(Float)
+	genotype_method = ManyToOne('%s.GenotypeMethod'%__name__, colname='genotype_method_id', ondelete='CASCADE', onupdate='CASCADE')
+	analysis_method = ManyToOne('%s.AnalysisMethod'%__name__, colname='analysis_method_id', ondelete='CASCADE', onupdate='CASCADE')
+	phenotype_method = ManyToOne('%s.PhenotypeMethod'%__name__, colname='phenotype_method_id', ondelete='CASCADE', onupdate='CASCADE')
+	transformation_method = ManyToOne('%s.TransformationMethod'%__name__, colname='transformation_method_id', ondelete='CASCADE', onupdate='CASCADE')
+	score_method_type = ManyToOne('%s.ScoreMethodType'%__name__, colname='score_method_type_id', ondelete='CASCADE', onupdate='CASCADE')
+	created_by = Field(String(128))
+	updated_by = Field(String(128))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='score_method', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
+	using_table_options(UniqueConstraint('genotype_method_id', 'analysis_method_id', 'phenotype_method_id', \
+								'score_method_type_id', 'transformation_method_id'))
+
+class TransformationMethod(Entity):
+	"""
+	2011-4-5
+	"""
+	name = Field(String(30))
+	description = Field(Text)
+	formular = Field(String(100))
+	function = Field(String(20))
+	using_options(tablename='transformation_method', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
+
+	
+class ScoreMethodType(Entity):
+	"""
+	2011-4-5
+	"""
+	short_name = Field(String(30), unique=True)
+	method_description = Field(String(8000))
+	data_description = Field(String(8000))
+	created_by = Field(String(200))
+	updated_by = Field(String(200))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='score_method_type', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
+
+
+class LocusMethod(Entity, TableClass):
+	"""
+	2011-4-5
+		to mark different sets of loci
+	"""
+	short_name = Field(String(256), unique=True)
+	description = Field(Text)
+	created_by = Field(String(128))
+	updated_by = Field(String(128))
+	date_created = Field(DateTime, default=datetime.now)
+	date_updated = Field(DateTime)
+	using_options(tablename='locus_method', metadata=__metadata__, session=__session__)
+	using_table_options(mysql_engine='InnoDB')
 
 """
 class Allele(Entity, TableClass):
