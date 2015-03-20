@@ -2,20 +2,30 @@
 Automatically exported from code.google.com/p/autismgenetics
 
 Introduction
+
 create the database
+
     createdb autismdb
+
 add pgsql language to the db
+
     postgres@autism:~$ createlang plpgsql autismdb
+
 use elixirdb ORM to pop up the skeleton.
+
     yh@thinkpad:~/script/autismgenetics$ ./src/AutismDB.py  -v postgresql -u yh -z localhost -d autismdb -k public
+
 install triggers for relevant tables
+
     schemaName=public;
     dbName=autismdb;
     for tbl in `~/script/pymodule/FindTablesWithLogColumns.py -d $dbName -u yh -k $schemaName `;
       do echo $tbl;
       ~/script/pymodule/OutputSQLTrigger.py -i $tbl | psql  $dbName -f -;
     done
+
 grant all privileges on all tables/sequences to all users in geschwindlab group
+
     # in psql client
     create role autismTeam;
     grant autismTeam to user1;
@@ -34,15 +44,25 @@ grant all privileges on all tables/sequences to all users in geschwindlab group
     do
       psql -c "grant usage,update,select on $tbl to $roleName" $dbName ;
     done
+
 add data_dir variable into table readme
+
 fill in table allele_type
+
 data entries:
+
 missing
+
 reference
+
 substitution
+
 inversion
+
 deletion
+
 insertion
+
 translocation
 
 Future incremental change to db (like adding some columns or changing column type) has to be carried out manually. Adding new table can be done through running src/AutismDB.py though.
