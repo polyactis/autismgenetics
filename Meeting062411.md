@@ -1,0 +1,3 @@
+1) create a simple query interface, which spans at least across 2 webpages, and keeps a summary of the query being built, so the user known what is being created. [we want to get fancy, we can have a graphic interface showing the value distribution and drag the interval, set the threshold etc](if.md).
+2) in terms of variants we need to build a variant database using hdf5 and find a way to deal with 1) 3-position variants, indel etc).
+3) after filtering patients, create a subtable with the variants and run basic summary statistics
